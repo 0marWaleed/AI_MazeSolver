@@ -1,6 +1,8 @@
 import pygame
 import random
 import heapq
+import time
+import sys
 
 # Initialize Colors
 WHITE = (255, 255, 255)
@@ -12,7 +14,7 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
 #Speed of Robot
-UPDATE_TIME_MS = 150
+UPDATE_TIME_MS = 60
 #Maze paths to the goal
 EXTRA_PATHS = 8
 
@@ -23,7 +25,8 @@ pygame.init()
 # Set up the window size and title
 window_height = 700
 window_width = 700
-window_size = (window_width, window_height)
+offset = 50
+window_size = (window_width, window_height + offset)
 screen = pygame.display.set_mode(window_size)
 pygame.display.set_caption("Maze Solver")
 
@@ -71,12 +74,11 @@ total_button_height = (button_height * num_buttons) + (button_spacing * (num_but
 start_y = (window_size[1] - total_button_height) // 2
 start_x = (window_size[0] - button_width) // 2  
 
-
 buttons = [
     Button(start_x, start_y, button_width, button_height, BLACK, 'Generate Maze', font, WHITE),
-    Button(start_x, start_y + button_height + button_spacing, button_width, button_height, BLACK, 'Solve by DFS', font, WHITE),
-    Button(start_x, start_y + 2 * (button_height + button_spacing), button_width, button_height, BLACK, 'Solve by BFS', font, WHITE),
-    Button(start_x, start_y + 3 * (button_height + button_spacing), button_width, button_height, BLACK, 'Solve by UCS', font, WHITE),
+    Button(start_x, start_y + button_height + button_spacing, button_width, button_height, BLUE, 'Solve by DFS', font, WHITE),
+    Button(start_x, start_y + 2 * (button_height + button_spacing), button_width, button_height, BLUE, 'Solve by BFS', font, WHITE),
+    Button(start_x, start_y + 3 * (button_height + button_spacing), button_width, button_height, BLUE, 'Solve by UCS', font, WHITE),
     Button(start_x, start_y + 4 * (button_height + button_spacing), button_width, button_height, BLACK, 'Quit', font, WHITE)
 ]
 back_button = Button(window_width-39, -4, 40, 40, WHITE, '<', font, BLACK)
@@ -128,6 +130,16 @@ class Maze:
             'DFS': [],
             'BFS': [],
             'UCS': []
+        }
+        self.elapsed_time = {
+            'DFS': 0.1,
+            'BFS': 0.1,
+            'UCS': 0.1
+        }
+        self.memory_usage = {
+            'DFS': 0,
+            'BFS': 0,
+            'UCS': 0
         }
 
     def at(self, x, y):
@@ -232,11 +244,23 @@ class Maze:
         y = 0
         stack.append((x, y))
         self.at(x, y).set_visited()
+        start_time = time.time()
+
+        def calculate_memory_usage():
+            return sys.getsizeof(stack) + sum(sys.getsizeof(item) for item in stack)
+
+        max_memory_usage = calculate_memory_usage()
 
         while x != self.maze_size - 1 or y != self.maze_size - 1:
             x = stack[-1][0]
             y = stack[-1][1]
             self.at(x, y).set_visited()
+
+            max_memory_usage = calculate_memory_usage()
+            elapsed_time = time.time() - start_time
+            memory_usage = max_memory_usage
+            self.display_info(elapsed_time, memory_usage)
+            pygame.time.delay(UPDATE_TIME_MS)
 
             backtrack = True
             neighbor: list[str] = self.at(x, y).get_neighbor()
@@ -270,6 +294,12 @@ class Maze:
         self.path['DFS'] = stack
         if (self.maze_size - 1, self.maze_size - 1) not in self.path['DFS']:
             self.path['DFS'] += [(self.maze_size - 1, self.maze_size - 1)]
+
+        # At the end of the method, after the solution is complete:
+        self.elapsed_time['DFS'] = elapsed_time
+        self.memory_usage['DFS'] = memory_usage
+
+        pygame.display.update()
 
         return self.__get_path()
 
@@ -314,10 +344,26 @@ class Maze:
         self.at(0, 0).set_visited()
         parent_map = {}
 
+        start_time = time.time()
+
+        def calculate_memory_usage():
+            return sys.getsizeof(queue) + sum(sys.getsizeof(item) for item in queue)
+
+        max_memory_usage = calculate_memory_usage()
+
+
         while queue:
             x, y = queue.pop(0)
 
+            max_memory_usage = calculate_memory_usage()
+            elapsed_time = time.time() - start_time
+            memory_usage = max_memory_usage
+            self.display_info(elapsed_time, memory_usage)
+            pygame.time.delay(UPDATE_TIME_MS)
+
             if x == self.maze_size - 1 and y == self.maze_size - 1:
+                self.elapsed_time['BFS'] = time.time() - start_time
+                self.memory_usage['BFS'] = max_memory_usage
                 self.path['BFS'] = self.__reconstruct_path(parent_map, (0, 0), (x, y))
                 return self.__get_path()
 
@@ -371,10 +417,24 @@ class Maze:
         parent_map = {}
         cost_map = {(0, 0): 0}
 
+        start_time = time.time()
+
+        def calculate_memory_usage():
+            return sys.getsizeof(priority_queue) + sum(sys.getsizeof(item) for item in priority_queue)
+
+        max_memory_usage = calculate_memory_usage()
+
         while priority_queue:
             cost, x, y = heapq.heappop(priority_queue)
 
+            max_memory_usage = calculate_memory_usage()
+            elapsed_time = time.time() - start_time
+            memory_usage = max_memory_usage
+            self.display_info(elapsed_time, memory_usage)
+            pygame.time.delay(UPDATE_TIME_MS)
             if x == self.maze_size - 1 and y == self.maze_size - 1:
+                self.elapsed_time['UCS'] = elapsed_time
+                self.memory_usage['UCS'] = memory_usage
                 self.path['UCS'] = self.__reconstruct_path(parent_map, (0, 0), (x, y))
                 return self.__get_path(), cost_map
 
@@ -404,6 +464,8 @@ class Maze:
                                                          self.cell_size))
                         pygame.display.flip()
                         pygame.time.delay(delay)
+
+
         return [], cost_map
 
 # -------------- Showing the path Functions ----------------
@@ -509,31 +571,52 @@ class Maze:
         
         pygame.display.update()
 
+    def display_info(self, elapsed_time, memory_usage,show = True):
+        font = pygame.font.SysFont(None, 34)
+        time_text = font.render(f"Time: {elapsed_time:.2f} s", True, BLUE)
+        memory_text = font.render(f"Memory: {memory_usage} Bytes", True, BLUE) # Clear the text area
+        if show:
+            screen.fill(WHITE, (50, 710, window_size[0], offset))
+        screen.blit(time_text, (120, 714))  # Display time at the top-left corner
+        screen.blit(memory_text, (380, 714))  # Display memory usage below the time
+        pygame.display.update()
+
     def display_saved_path(self, algorithm, cost_map=None):
         if algorithm in self.path and self.path[algorithm]:
- 
-                for x, y in self.path[algorithm]:
-                    # Draw the path circle
-                    pygame.draw.circle(
-                        screen,
-                        BLUE,
-                        (x * self.cell_size + self.cell_size // 2, y * self.cell_size + self.cell_size // 2),
-                        self.cell_size // 8
-                    )
-
-                    # Draw the cost on the path (if a cost map is available)
-                    if algorithm == 'UCS' and cost_map and (x, y) in cost_map:
-                        cost = cost_map[(x, y)]
-                        font = pygame.font.SysFont(None, 24)
-                        text = font.render(str(cost), True, BLACK)
-                        text_rect = text.get_rect(
-                            center=(
-                                x * self.cell_size + self.cell_size // 2,
-                                y * self.cell_size + self.cell_size // 2,
-                            )
+            # Draw the path
+            for x, y in self.path[algorithm]:
+                pygame.draw.circle(
+                    screen,
+                    BLUE,
+                    (x * self.cell_size + self.cell_size // 2, y * self.cell_size + self.cell_size // 2),
+                    self.cell_size // 8
+                )
+                
+                # Draw the cost on the path (if a cost map is available)
+                if algorithm == 'UCS' and cost_map and (x, y) in cost_map:
+                    cost = cost_map[(x, y)]
+                    font = pygame.font.SysFont(None, 26)
+                    text = font.render(str(cost), True, BLACK)
+                    text_rect = text.get_rect(
+                        center=(
+                            x * self.cell_size + self.cell_size // 2,
+                            y * self.cell_size + self.cell_size // 2,
                         )
-                        screen.blit(text, text_rect)
-                pygame.display.update()
+                    )
+                    screen.blit(text, text_rect)
+            
+            # Render time and memory usage (outside the loop)
+            # Ensure the text area is updated outside the path loop
+            font = pygame.font.SysFont(None, 34)
+            time_text = font.render(f"Time: {self.elapsed_time[algorithm]:.2f} s", True, BLUE)
+            memory_text = font.render(f"Memory: {self.memory_usage[algorithm]} Bytes", True, BLUE)
+
+            # Display time and memory usage persistently
+            screen.blit(time_text, (120, 714))
+            screen.blit(memory_text, (380, 714))
+
+            # Update the display
+            pygame.display.update()
         else:
             print(f"No path saved for {algorithm}.")
 
@@ -582,6 +665,7 @@ while running:
                                     current_state = DFS_VIEW
                                     print("Solution is already found!")
                                     maze.display_saved_path("DFS")
+                                    
                                 elif maze:
                                     if bfs_solution or ucs_solution:
                                         maze.reset()
@@ -634,18 +718,25 @@ while running:
     if current_state == MAIN_MENU:
         for button in buttons:
             button.draw(screen, mouse_pos)
+
     elif current_state == MAZE_VIEW:
         if maze:
             maze.show(algorithm=None)
+            
     elif current_state == DFS_VIEW:
         if maze:
             maze.show(algorithm='DFS')
+            maze.display_info(maze.elapsed_time['DFS'],maze.memory_usage['DFS'],show=False)
+
     elif current_state == BFS_VIEW:
         if maze:
             maze.show(algorithm='BFS')
+            maze.display_info(maze.elapsed_time['BFS'],maze.memory_usage['BFS'],show=False)
+
     elif current_state == UCS_VIEW:
         if maze:
             maze.show(algorithm='UCS')
+            maze.display_info(maze.elapsed_time['UCS'],maze.memory_usage['UCS'],show=False)
 
     pygame.display.update()
 
